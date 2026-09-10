@@ -1,6 +1,6 @@
 # UMA structure tools
 
-Two small command-line tools for catalytic-structure workflows with UMA:
+three small command-line tools for catalytic-structure workflows with UMA:
 
 - `uma_relax_batch.py`: batched torch-sim L-BFGS geometry optimization.
 - `uma_to_vasp.py`: conversion of relaxed XYZ/EXTXYZ structures to POSCAR.
