@@ -143,6 +143,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--fail-on-unconverged",
+        action="store_true",
+        help=(
+            "Return exit status 2 when any structure reaches the step limit. "
+            "By default, numerical non-convergence is recorded as a result "
+            "but does not fail a completed batch pipeline."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -411,6 +420,7 @@ def save_batch(
                 "nfixed": int(fixed.sum()),
             }
         )
+        atoms.set_tags(original.get_tags())
         atoms.set_constraint(ASEFixAtoms(mask=fixed.tolist()))
         atoms.arrays["forces"] = force
         atoms.calc = None
@@ -543,7 +553,8 @@ def main() -> int:
     started_all = time.time()
     processed = 0
     converged = 0
-    failed = 0
+    unconverged = 0
+    errors = 0
     with summary_path.open("a", encoding="utf-8", buffering=1) as summary:
         chunk_starts = (
             [0]
@@ -587,25 +598,36 @@ def main() -> int:
             for result in results:
                 summary.write(json.dumps(asdict(result), cls=NumpyEncoder) + "\n")
                 processed += 1
-                if result.error or not result.converged:
-                    failed += 1
+                if result.error:
+                    errors += 1
+                elif not result.converged:
+                    unconverged += 1
                 else:
                     converged += 1
             elapsed = max(time.time() - started_all, 1e-9)
             speed = processed / elapsed
             remaining = (len(pending) - processed) / max(speed, 1e-9) / 60
             logger.info(
-                "Progress %d/%d | converged=%d failed=%d | %.3f struct/s | ETA %.1f min",
+                "Progress %d/%d | converged=%d unconverged=%d errors=%d | %.3f struct/s | ETA %.1f min",
                 processed,
                 len(pending),
                 converged,
-                failed,
+                unconverged,
+                errors,
                 speed,
                 remaining,
             )
 
-    logger.info("Done: processed=%d converged=%d failed=%d", processed, converged, failed)
-    return 0 if failed == 0 else 2
+    logger.info(
+        "Done: processed=%d converged=%d unconverged=%d errors=%d",
+        processed,
+        converged,
+        unconverged,
+        errors,
+    )
+    if errors or (args.fail_on_unconverged and unconverged):
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
